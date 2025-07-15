@@ -1,6 +1,9 @@
 package lru
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Design a data structure that follows the constraints of a Least Recently Used (LRU) cache.
 // Implement the LRUCache class:
@@ -14,44 +17,57 @@ import "fmt"
 type LRUCache struct {
 	cap int
 	// len via len(c.h)
-	h map[int]int
-	// l   Node[int]
+	h map[int]*Node
 	l Node
 }
 
-func NewLRUCache(cap int) LRUCache {
-	l := Node{}
-	l.next = &l
-	l.prev = &l
-
-	return LRUCache{
-		cap: cap,
-		// FIXME should the map values be references to Nodes?
-		h: make(map[int]int, cap),
-		l: l,
+func NewLRUCache(cap int) *LRUCache {
+	if cap <= 0 {
+		panic("capacity must be positive")
 	}
+
+	cache := LRUCache{
+		cap: cap,
+		h:   make(map[int]*Node, cap),
+		l:   Node{},
+	}
+
+	cache.l.next = &cache.l
+	cache.l.prev = &cache.l
+
+	// return by reference to avoid copying and breaking circular reference.
+	// FIXME allocating on the heap is best practice anyways
+	return &cache
 }
 
 func (c *LRUCache) Get(key int) int {
-	v, ok := c.h[key]
+	n, ok := c.h[key]
 	if !ok {
 		return -1
 	}
 
-	// Update hash: put key to beginning
+	c.removeNode(n)
+	c.prependNode(n)
 
-	return v
+	return n.val
 }
 
 // Update
-func (c *LRUCache) Put(key, value int) {
-	n := c.addNode(key, value)
+func (c *LRUCache) Put(key, val int) {
+	if n, ok := c.h[key]; ok {
+		n.val = val
+		c.removeNode(n)
+		c.prependNode(n)
+		return
+	}
 
-	c.h[key] = value // FIXME = n
+	n := &Node{key: key, val: val}
+	c.prependNode(n)
+	c.h[key] = n
 
-	fmt.Printf("len=%d, cap=%d\n", len(c.h), c.cap)
-	if len(c.h) >= c.cap { // evict from end
-		fmt.Println("EVICT!")
+	// fmt.Printf("len=%d, cap=%d\n", len(c.h), c.cap)
+	if len(c.h) > c.cap { // evict from end
+		// fmt.Println("EVICT!")
 		last := c.l.prev
 		delete(c.h, last.key)
 
@@ -61,30 +77,38 @@ func (c *LRUCache) Put(key, value int) {
 
 // TODO make generic
 //
-//	type Node[K comparable] struct {
-//		prev *Node[K]
-//		next *Node[K]
-//		key  K
+//	type Node[K comparable, V any] struct {
+//	    prev *Node[K, V]
+//	    next *Node[K, V]
+//	    key  K
+//	    val  V
 //	}
 type Node struct {
 	prev *Node
 	next *Node
-	key  int
+	// key is needed to delete evicted node. Also nice for String().
+	key int
+	val int
 }
 
 // Inserts at beginning
-func (c *LRUCache) addNode(key, value int) *Node {
-	n := Node{key: key}
-
+func (c *LRUCache) prependNode(n *Node) {
 	n.next = c.l.next
 	n.prev = &c.l
-	c.l.next.prev = &n
-	c.l.next = &n
-
-	return &n
+	c.l.next.prev = n
+	c.l.next = n
 }
 
 func (c *LRUCache) removeNode(n *Node) {
 	n.prev.next = n.next
 	n.next.prev = n.prev
+}
+
+func (c *LRUCache) String() string {
+	// fmt.Printf("l=%p, next=%p, prev=%p\n", &c.l, c.l.next, c.l.prev)
+	var elts []string
+	for n := c.l.next; n != &c.l; n = n.next {
+		elts = append(elts, fmt.Sprintf("%v:%v", n.key, n.val))
+	}
+	return "[" + strings.Join(elts, ",") + "]"
 }
