@@ -31,6 +31,15 @@ func TestLRUCache(t *testing.T) {
 		lru.Put(1, 3)
 		AssertEqual(t, lru.String(), "[1:3,2:2]")
 	})
+
+	t.Run("lru wrong cap", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("function should panic")
+			}
+		}()
+		NewLRUCache(0)
+	})
 }
 
 func AssertEqual[T comparable](t testing.TB, got, want T) {
