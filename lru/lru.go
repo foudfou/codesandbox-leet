@@ -1,6 +1,7 @@
 package lru
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -18,22 +19,22 @@ import (
 // Both Get and Put must run in O(1) average time complexity.
 
 // LRU cache is a linked list to hold ordered values + a map pointing to the list items for O(1) retrieval
-type LRUCache struct {
+type LRUCache[K comparable, V any] struct {
 	cap int
 	// len = len(map)
-	l Node
-	h map[int]*Node
+	h map[K]*Node[K, V]
+	l Node[K, V]
 }
 
-func NewLRUCache(cap int) *LRUCache {
+func NewLRUCache[K comparable, V any](cap int) *LRUCache[K, V] {
 	if cap <= 0 {
 		panic("capacity must be positive")
 	}
 
-	c := &LRUCache{
+	c := &LRUCache[K, V]{
 		cap,
-		Node{},
-		make(map[int]*Node),
+		make(map[K]*Node[K, V]),
+		Node[K, V]{},
 	}
 
 	c.l.prev = &c.l
@@ -42,7 +43,7 @@ func NewLRUCache(cap int) *LRUCache {
 	return c
 }
 
-func (c *LRUCache) Put(k, v int) {
+func (c *LRUCache[K, V]) Put(k K, v V) {
 	n, ok := c.h[k]
 	if ok { // update
 		n.val = v
@@ -54,31 +55,35 @@ func (c *LRUCache) Put(k, v int) {
 		if len(c.h) >= c.cap {
 			last := c.l.prev
 			deleteNode(last)
-			delete(c.h, last.val)
+			delete(c.h, last.key)
 		}
 
-		n = &Node{key: k, val: v}
+		n = &Node[K, V]{key: k, val: v}
 		insertNode(&c.l, n)
 
 		c.h[k] = n
 	}
 }
 
-func (c *LRUCache) Get(k int) int {
+var ErrNotFound = errors.New("Resource was not found")
+
+// Returns value for k, or the zero value with ErrNotFound if not present.
+func (c *LRUCache[K, V]) Get(k K) (V, error) {
 	n, ok := c.h[k]
 	if !ok {
-		return -1
+		var zero V
+		return zero, ErrNotFound
 	}
 
 	// move to front
 	deleteNode(n)
 	insertNode(&c.l, n)
 
-	return n.val
+	return n.val, nil
 }
 
 // Useful for debugging or testing
-func (c *LRUCache) String() string {
+func (c *LRUCache[K, V]) String() string {
 	if c.l.next == &c.l {
 		return "[]"
 	}
@@ -90,30 +95,22 @@ func (c *LRUCache) String() string {
 	return "[" + strings.Join(nodes, ",") + "]"
 }
 
-// TODO make generic
-//
-//	type Node[K comparable, V any] struct {
-//	    prev *Node[K, V]
-//	    next *Node[K, V]
-//	    key  K
-//	    val  V
-//	}
-type Node struct {
-	prev *Node
-	next *Node
-	key  int
-	val  int
+type Node[K comparable, V any] struct {
+	prev *Node[K, V]
+	next *Node[K, V]
+	key  K
+	val  V
 }
 
 // Insert node n to front of list l
-func insertNode(l, n *Node) {
+func insertNode[K comparable, V any](l, n *Node[K, V]) {
 	n.next = l.next
 	n.prev = l
 	l.next.prev = n
 	l.next = n
 }
 
-func deleteNode(n *Node) {
+func deleteNode[K comparable, V any](n *Node[K, V]) {
 	n.next.prev = n.prev
 	n.prev.next = n.next
 }
